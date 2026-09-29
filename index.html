@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>課堂巡堂極速評比</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* 防止手機雙擊縮放及反白 */
+    * {
+      touch-action: manipulation;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+  </style>
+</head>
+<body class="bg-slate-900 text-white flex flex-col h-screen overflow-hidden font-sans">
+
+  <!-- 頂部資訊列：作業名稱、班級、同步/匯出 -->
+  <header class="p-3 bg-slate-800 border-b border-slate-700 flex items-center justify-between gap-2 shrink-0">
+    <div class="flex-1">
+      <input
+        id="assignmentTitle"
+        type="text"
+        placeholder="作業名稱 (例: 習作 L3)"
+        class="w-full bg-slate-700/80 text-amber-300 font-bold px-3 py-1.5 rounded-lg border border-slate-600 focus:outline-none focus:ring-2 focus:ring-amber-400 text-sm"
+      />
+    </div>
+    <div class="flex items-center gap-1.5">
+      <button onclick="exportCSV()" class="bg-slate-700 hover:bg-slate-600 active:scale-95 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-200 border border-slate-600">
+        匯出
+      </button>
+      <button onclick="syncToGoogleSheets()" class="bg-indigo-600 hover:bg-indigo-500 active:scale-95 px-3 py-1.5 rounded-lg text-xs font-bold text-white shadow">
+        雲端同步
+      </button>
+    </div>
+  </header>
+
+  <!-- 即時狀態與座號顯示區 -->
+  <section class="flex flex-col items-center justify-center py-2 px-4 shrink-0 bg-slate-900">
+    <!-- 最近一筆歷史回饋 -->
+    <div id="recentBanner" class="h-6 text-xs text-slate-400 flex items-center gap-2 mb-1 tracking-wider">
+      <span>尚無評分紀錄</span>
+    </div>
+
+    <!-- 座號大卡片 -->
+    <div class="w-full max-w-sm bg-slate-800/90 border border-slate-700 rounded-2xl p-3 flex flex-col items-center shadow-inner">
+      <div class="text-xs uppercase tracking-widest text-slate-400 font-semibold mb-1">目前座號</div>
+      <div class="flex items-baseline gap-2">
+        <span id="seatDisplay" class="text-6xl font-black text-amber-400 tracking-tight min-w-[70px] text-center">--</span>
+        <span class="text-xl font-bold text-slate-400">號</span>
+      </div>
+      <div id="currentRecordTag" class="mt-1 h-5 text-xs font-medium text-slate-400">
+        <!-- 顯示該生目前已存分數 (若有) -->
+      </div>
+    </div>
+  </section>
+
+  <!-- 中間：九宮格數字鍵盤 (佔據中央主要手勢區) -->
+  <main class="flex-1 px-4 py-2 flex flex-col justify-center max-w-md w-full mx-auto">
+    <div class="grid grid-cols-3 gap-2 h-full max-h-[300px]">
+      <button onclick="pressDigit('1')" class="keypad-btn">1</button>
+      <button onclick="pressDigit('2')" class="keypad-btn">2</button>
+      <button onclick="pressDigit('3')" class="keypad-btn">3</button>
+
+      <button onclick="pressDigit('4')" class="keypad-btn">4</button>
+      <button onclick="pressDigit('5')" class="keypad-btn">5</button>
+      <button onclick="pressDigit('6')" class="keypad-btn">6</button>
+
+      <button onclick="pressDigit('7')" class="keypad-btn">7</button>
+      <button onclick="pressDigit('8')" class="keypad-btn">8</button>
+      <button onclick="pressDigit('9')" class="keypad-btn">9</button>
+
+      <button onclick="clearCurrentSeat()" class="keypad-fn text-rose-400">清空</button>
+      <button onclick="pressDigit('0')" class="keypad-btn">0</button>
+      <button onclick="backspace()" class="keypad-fn text-amber-400">⌫</button>
+    </div>
+  </main>
+
+  <!-- 底部：四顆常駐實體大色塊評分按鈕 -->
+  <footer class="p-3 bg-slate-950/80 border-t border-slate-800 shrink-0">
+    <div class="grid grid-cols-4 gap-2 max-w-md mx-auto h-20">
+      <!-- 優：85 -->
+      <button onclick="submitGrade('優', 85)" class="grade-btn bg-emerald-600 active:bg-emerald-700 text-white shadow-emerald-950">
+        <span class="text-xl font-black">優</span>
+        <span class="text-xs font-bold opacity-80 mt-0.5">85 分</span>
+      </button>
+
+      <!-- 良：80 -->
+      <button onclick="submitGrade('良', 80)" class="grade-btn bg-sky-600 active:bg-sky-700 text-white shadow-sky-950">
+        <span class="text-xl font-black">良</span>
+        <span class="text-xs font-bold opacity-80 mt-0.5">80 分</span>
+      </button>
+
+      <!-- 可：75 -->
+      <button onclick="submitGrade('可', 75)" class="grade-btn bg-amber-500 active:bg-amber-600 text-slate-950 shadow-amber-950">
+        <span class="text-xl font-black">可</span>
+        <span class="text-xs font-bold opacity-90 mt-0.5">75 分</span>
+      </button>
+
+      <!-- 待補：60 -->
+      <button onclick="submitGrade('待補', 60)" class="grade-btn bg-rose-600 active:bg-rose-700 text-white shadow-rose-950">
+        <span class="text-xl font-black">待補</span>
+        <span class="text-xs font-bold opacity-80 mt-0.5">60 分</span>
+      </button>
+    </div>
+  </footer>
+
+  <script>
+    // 樣式快捷類別
+    const keypadStyle = "bg-slate-800 active:bg-slate-700 text-white text-2xl font-bold rounded-xl flex items-center justify-center border border-slate-700 active:scale-95 transition-transform shadow";
+    const keypadFnStyle = "bg-slate-800/60 active:bg-slate-700 text-base font-semibold rounded-xl flex items-center justify-center border border-slate-700/60 active:scale-95 transition-transform";
+    const gradeBtnStyle = "rounded-2xl flex flex-col items-center justify-center active:scale-95 transition-transform shadow-lg";
+
+    document.querySelectorAll('.keypad-btn').forEach(b => b.className = keypadStyle);
+    document.querySelectorAll('.keypad-fn').forEach(b => b.className = keypadFnStyle);
+    document.querySelectorAll('.grade-btn').forEach(b => b.className += ` ${gradeBtnStyle}`);
+
+    // 核心狀態
+    let currentInput = "";
+    // 儲存格式: { "5": { level: "優", score: 85, time: "..." } }
+    let scoresMap = JSON.parse(localStorage.getItem('spark_homework_scores') || '{}');
+
+    // 預設作業名稱
+    const titleInput = document.getElementById('assignmentTitle');
+    const todayStr = new Date().toLocaleDateString('zh-TW', { month: 'numeric', day: 'numeric' });
+    titleInput.value = localStorage.getItem('spark_assignment_title') || `${todayStr} 課堂筆記檢查`;
+    titleInput.addEventListener('change', () => {
+      localStorage.setItem('spark_assignment_title', titleInput.value.trim());
+    });
+
+    // 觸覺微震動
+    function vibrate(ms = 20) {
+      if (navigator.vibrate) navigator.vibrate(ms);
+    }
+
+    // 數字輸入邏輯
+    function pressDigit(d) {
+      vibrate(15);
+      // 最多兩位數 (高中一班約 35~45 人)
+      if (currentInput.length >= 2) {
+        currentInput = d; // 超過兩位數重起輸入
+      } else {
+        currentInput += d;
+      }
+      renderSeatDisplay();
+    }
+
+    function clearCurrentSeat() {
+      vibrate(20);
+      currentInput = "";
+      renderSeatDisplay();
+    }
+
+    function backspace() {
+      vibrate(15);
+      currentInput = currentInput.slice(0, -1);
+      renderSeatDisplay();
+    }
+
+    function renderSeatDisplay() {
+      const display = document.getElementById('seatDisplay');
+      const recordTag = document.getElementById('currentRecordTag');
+
+      if (!currentInput) {
+        display.innerText = "--";
+        recordTag.innerText = "";
+        return;
+      }
+
+      const seatNum = parseInt(currentInput, 10);
+      display.innerText = seatNum;
+
+      // 檢查是否已評過分 (提供即時覆蓋提示)
+      if (scoresMap[seatNum]) {
+        const prev = scoresMap[seatNum];
+        recordTag.innerHTML = `<span class="text-amber-300">已評：${prev.level} (${prev.score}分) ➜ 評分將覆蓋</span>`;
+      } else {
+        recordTag.innerText = "尚未評分";
+      }
+    }
+
+    // 提交評分
+    function submitGrade(level, score) {
+      if (!currentInput) {
+        alert("請先輸入學生座號！");
+        return;
+      }
+      vibrate(35); // 成功給予較明顯震動
+
+      const seatNum = parseInt(currentInput, 10);
+      const isOverwriting = !!scoresMap[seatNum];
+
+      // 覆蓋寫入
+      scoresMap[seatNum] = {
+        level: level,
+        score: score,
+        updatedAt: new Date().toLocaleTimeString('zh-TW', { hour12: false })
+      };
+
+      // 存入本機儲存
+      localStorage.setItem('spark_homework_scores', JSON.stringify(scoresMap));
+
+      // 更新最近動態
+      const recentBanner = document.getElementById('recentBanner');
+      const actionText = isOverwriting ? '覆蓋更新' : '已登錄';
+      recentBanner.innerHTML = `
+        <span class="inline-block w-2 h-2 rounded-full ${level === '優' ? 'bg-emerald-400' : level === '良' ? 'bg-sky-400' : level === '可' ? 'bg-amber-400' : 'bg-rose-400'}"></span>
+        <span class="text-slate-200 font-bold">${seatNum} 號</span> ${level} (${score}分)
+        <span class="text-slate-500 text-[10px]">${actionText}</span>
+      `;
+
+      // 評完瞬間歸零，等待下一個座號
+      currentInput = "";
+      renderSeatDisplay();
+    }
+
+    // 匯出 CSV (離線備援方案)
+    function exportCSV() {
+      const keys = Object.keys(scoresMap).map(Number).sort((a, b) => a - b);
+      if (keys.length === 0) {
+        alert("目前尚無任何評分紀錄！");
+        return;
+      }
+
+      const taskName = titleInput.value.trim() || "作業檢查";
+      let csvContent = `座號,評級,分數,作業名稱\n`;
+      keys.forEach(seat => {
+        const item = scoresMap[seat];
+        csvContent += `${seat},${item.level},${item.score},${taskName}\n`;
+      });
+
+      const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `${taskName}_評分紀錄.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    // 同步到 Google 試算表 (透過 Apps Script Web App)
+    async function syncToGoogleSheets() {
+      const keys = Object.keys(scoresMap).map(Number).sort((a, b) => a - b);
+      if (keys.length === 0) {
+        alert("目前尚無評比資料！");
+        return;
+      }
+
+      const GAS_URL = "YOUR_APPS_SCRIPT_WEB_APP_URL_HERE";
+
+      if (GAS_URL.includes("YOUR_APPS_SCRIPT")) {
+        alert("提示：尚未設定 Google Apps Script 網址，將先為您下載 CSV 檔案備份！");
+        exportCSV();
+        return;
+      }
+
+      const payload = {
+        assignmentTitle: titleInput.value.trim() || "課堂作業",
+        scores: scoresMap
+      };
+
+      try {
+        const res = await fetch(GAS_URL, {
+          method: "POST",
+          mode: "no-cors",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        alert(`已送出同步！共 ${keys.length} 位學生紀錄。`);
+      } catch (err) {
+        alert("同步失敗，請檢查網路或稍後重試。");
+      }
+    }
+  </script>
+</body>
+</html>
